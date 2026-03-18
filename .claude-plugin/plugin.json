@@ -1,0 +1,6 @@
+{
+  "name": "crier",
+  "description": "macOS desktop + audio notifications when Claude needs user attention",
+  "version": "1.0.0",
+  "author": { "name": "Finley" }
+}

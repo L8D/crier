@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+# Crier: Claude Code notification hook
+# Sends macOS notification + "Attention needed" via say
+
+# Set CRIER_ENABLED=false to suppress notifications (defaults to true)
+if [[ "${CRIER_ENABLED:-true}" == "false" ]]; then
+  exit 0
+fi
+
+# Build notification title with project name if available
+title="Claude"
+if [ -n "$CLAUDE_PROJECT_DIR" ]; then
+  project_name=$(basename "$CLAUDE_PROJECT_DIR")
+  title="Claude ($project_name)"
+fi
+
+# Sanitize title for AppleScript
+title="${title//\\/\\\\}"
+title="${title//\"/\\\"}"
+
+# Detect neovim buffer context
+buf="$CLAUDE_NVIM_SESSION_BUFFER_NAME"
+raw_buf="$buf"
+
+# Sanitize buffer name for AppleScript
+buf="${buf//\\/\\\\}"
+buf="${buf//\"/\\\"}"
+
+# Send notification
+if [ -n "$buf" ]; then
+  osascript -e "display notification \"Stopped in $buf\" with title \"$title\""
+else
+  osascript -e "display notification \"Stopped\" with title \"$title\""
+fi
+
+say "Attention needed"
+
+# Track most-recently-notifying buffer via filesystem
+state_file="$HOME/.claude/latest-crier-session-buffer-name"
+if [ -n "$raw_buf" ]; then
+  printf '%s' "$raw_buf" >"$state_file"
+else
+  rm -f "$state_file"
+fi
+
+exit 0
