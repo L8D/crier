@@ -34,7 +34,7 @@ else
   osascript -e "display notification \"Stopped\" with title \"$title\""
 fi
 
-say "Attention needed"
+say "Attention needed" &
 
 # Track most-recently-notifying buffer via filesystem
 state_file="$HOME/.claude/latest-crier-session-buffer-name"
