@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+# Crier-push: redundant macOS notification for the PushNotification tool.
+#
+# Wire this as a PreToolUse hook with a `PushNotification` matcher in
+# ~/.claude/settings.json. It fires IN ADDITION to however Claude Code
+# already handles PushNotification, replicating crier's "attention needed"
+# behaviour (osascript toaster + `say`).
+#
+# Unlike crier's generic message, the toaster body is the session name
+# concatenated with the push notification's own message, e.g.
+#   "<session title>: build failed: 2 auth tests"
+#
+# Hook payload (JSON on stdin) carries: .session_id, .transcript_path,
+# .cwd, .tool_name, and .tool_input.message (the PushNotification body).
+
+# Set CRIER_ENABLED=false to suppress notifications (defaults to true).
+if [[ "${CRIER_ENABLED:-true}" == "false" ]]; then
+  exit 0
+fi
+
+INPUT=$(cat)
+
+# Extract the push message and the transcript path from the hook payload.
+message=$(printf '%s' "$INPUT" | jq -r '.tool_input.message // ""')
+transcript_path=$(printf '%s' "$INPUT" | jq -r '.transcript_path // ""')
+session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // ""')
+
+# Resolve the human-readable session name from the transcript, mirroring
+# claude-aw-watcher's precedence: custom-title → ai-title → slug. The title
+# lines have no per-line uuid and stream by as the session is renamed, so we
+# take the LAST occurrence of each. Fall back to a short session id.
+session_name=""
+if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
+  session_name=$(jq -rs '
+    (map(select(.type == "custom-title") | .customTitle) | map(select(. != null and . != "")) | last) //
+    (map(select(.type == "ai-title")     | (.aiTitle // .title)) | map(select(. != null and . != "")) | last) //
+    (map(.slug) | map(select(. != null and . != "")) | last) //
+    ""
+  ' "$transcript_path" 2>/dev/null)
+fi
+
+if [[ -z "$session_name" && -n "$session_id" ]]; then
+  session_name="${session_id:0:8}"
+fi
+
+# Build the toaster body: "<session name>: <message>", degrading gracefully
+# when either part is missing.
+if [[ -n "$session_name" && -n "$message" ]]; then
+  body="$session_name: $message"
+elif [[ -n "$message" ]]; then
+  body="$message"
+elif [[ -n "$session_name" ]]; then
+  body="$session_name"
+else
+  body="Attention needed"
+fi
+
+# Title: "Claude" plus project name when available.
+title="Claude"
+if [ -n "$CLAUDE_PROJECT_DIR" ]; then
+  project_name=$(basename "$CLAUDE_PROJECT_DIR")
+  title="Claude ($project_name)"
+fi
+
+# Sanitize strings for AppleScript (escape backslashes then double-quotes).
+title="${title//\\/\\\\}"
+title="${title//\"/\\\"}"
+body="${body//\\/\\\\}"
+body="${body//\"/\\\"}"
+
+osascript -e "display notification \"$body\" with title \"$title\""
+
+say "Attention needed" &
+
+exit 0
